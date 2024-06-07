@@ -13,6 +13,7 @@ config.batch_size = 512
 config.total_kobj = 200000   
 config.kobj_per_tick = 100         # Interval of progress prints.
 config.snapshot_ticks = 100        # How often to save network snapshots, None = disable.
+config.evaluate_ticks = 100        # How often to save network snapshots, None = disable.
 config.state_dump_ticks = 500       # How often to dump training state, None = disable.
 
 config.dataset = edict()
@@ -26,7 +27,7 @@ config.diffusion.noise_schedule = "cosine"
 config.diffusion.predict_xstart = True
 
 config.loss = edict()
-config.loss.use_matching_loss = True
+config.loss.use_matching_loss = False
 
 config.optimizer = edict()
 config.optimizer.lr = 1e-3

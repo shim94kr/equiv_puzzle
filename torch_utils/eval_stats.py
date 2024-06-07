@@ -128,7 +128,18 @@ class Collector:
             self._cumulative[name].copy_(cumulative)
             if float(delta[0]) != 0:
                 self._moments[name] = delta
+            import pdb; pdb.set_trace()
     
+    def reset(self, ex='Eval/.*'):
+        r"""
+        Clear the variables that contains name.
+        It is used to save a variable in certain intervals (e.g. evaluation)
+        """
+        regex = re.compile(ex)
+        names = [name  for name in _counters if regex.fullmatch(name)]
+        for name in names:
+            _counters[name] = torch.zeros_like(_counters[name])
+
     def _get_delta(self, name):
         r"""Returns the raw moments that were accumulated for the given
         statistic between the last two calls to `update()`, or zero if

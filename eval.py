@@ -39,6 +39,7 @@ def evaluation_loop(run_dir,
 
         model_kwargs = {"others": data}
         samples = [x_t]
+
         for t in timesteps:
             if t % 50 == 0:
                 samples.append(x_t)
@@ -51,10 +52,9 @@ def evaluation_loop(run_dir,
                     clip_denoised=clip_denoised,
                     model_kwargs=model_kwargs,
                 )['sample']
-
+        
         samples = torch.stack(samples, dim=1)
         sample_gt = x_gt.unsqueeze(1)
-
         is_3d = "3d" in run_dir
         gt_piece = transform_pieces(data["vertices"], sample_gt, data["piece_mask"], is_3d = is_3d)
         pred_pieces = transform_pieces(data["vertices"], samples, data["piece_mask"], is_3d = is_3d)
@@ -85,9 +85,10 @@ def evaluation_loop(run_dir,
         if 'Eval/' in k:
             fields += [f"{k} {v['mean']:<6.2f}"]
             if dist.get_rank() == 0:
-                logger.log_eval(cur_nobj // 1000, k, v)
+                logger.log_eval(cur_nobj // 1000, k, v['mean'])
     torch.cuda.reset_peak_memory_stats()
     dist.print0(' '.join(fields))
+    eval_stats.default_collector.reset()
 
 def main():
     # project related args

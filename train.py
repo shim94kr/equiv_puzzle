@@ -246,8 +246,8 @@ def main():
 
     cc.resume_pkl, cc.resume_state_dump = config.model_pkl, config.model_state
     cc.batch_size, cc.total_kobj = config.batch_size, config.total_kobj
-    cc.ema_halflife_kobj, cc.ema_rampup_ratio = co.ema_halflife_kobj, co.ema_rampup_ratio
-    cc.kobj_per_tick, cc.snapshot_ticks, cc.state_dump_ticks = config.kobj_per_tick, config.snapshot_ticks, config.state_dump_ticks
+    cc.ema_halflife_kobj, cc.ema_rampup_ratio, cc.kobj_per_tick = co.ema_halflife_kobj, co.ema_rampup_ratio, config.kobj_per_tick
+    cc.snapshot_ticks, cc.evaluate_ticks, cc.state_dump_ticks = config.snapshot_ticks, config.evaluate_ticks, config.state_dump_ticks
     cc.lr_decay_kobj, cc.lr_rampup_kobj = co.lr_decay_kobj, co.lr_rampup_kobj
     
     is_3d = ("3d" in config.exp_name)
