@@ -20,13 +20,13 @@ ID_COLOR = {1: "#A19E74",2: "#B18463", 3:"#E8D7FF",4: "#FEFBA3",
                 21: "#8CD0A1",22: "#C1DBAE",23: "#B96AC9",24: "#231B1B",
                 25: "#640D0E" ,26: "#D3B675" ,27:"#82A07E" ,28:"#B89C6F" }
 
-def draw_pieces(run_dir, cur_nobj, name, batch_samples):
+def draw_pieces(run_dir, cur_nobj, name, batch_samples, nb_offset = 0):
     # Create output directory
     out_dir = os.path.join(run_dir, f"outputs-{cur_nobj//1000:06d}")
     os.makedirs(out_dir, exist_ok=True)
 
     for b, samples in enumerate(batch_samples): 
-        with imageio.get_writer(os.path.join(out_dir, f"{name}_sample{b:03d}.gif"), mode='I', duration=0.5) as writer:
+        with imageio.get_writer(os.path.join(out_dir, f"{name}_sample{b+nb_offset:03d}.gif"), mode='I', duration=0.5) as writer:
             for s, sample in enumerate(samples):
                 fig, ax = plt.subplots()
                 for idx, polygon in enumerate(sample):
@@ -46,13 +46,13 @@ def draw_pieces(run_dir, cur_nobj, name, batch_samples):
                 image = imageio.v2.imread(buf)
                 writer.append_data(image)
 
-def draw_pieces_3d(run_dir, cur_nobj, name, batch_samples_mesh):
+def draw_pieces_3d(run_dir, cur_nobj, name, batch_samples_mesh, nb_offset=0):
     # Create output directory
     out_dir = os.path.join(run_dir, f"outputs-{cur_nobj//1000:06d}")
     os.makedirs(out_dir, exist_ok=True)
 
     for b, samples_meshes in enumerate(batch_samples_mesh): 
-        with imageio.get_writer(os.path.join(out_dir, f"{name}_sample{b:03d}.gif"), mode='I', duration=0.5) as writer:
+        with imageio.get_writer(os.path.join(out_dir, f"{name}_sample{b+nb_offset:03d}.gif"), mode='I', duration=0.5) as writer:
             #for sample_faces, sample_vertices in zip(samples_faces, samples_vertices):
             for sample_meshes in samples_meshes:
                 fig = plt.figure(figsize=(10, 10))

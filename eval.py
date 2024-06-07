@@ -13,7 +13,7 @@ from dnnlib import EasyDict as edict
 from configs.config import config, update_config
 from metric import transform_pieces, get_pieces, get_pieces_3d, compute_metric
 from visualize import draw_pieces, draw_pieces_3d
-from torch_utils import training_stats
+from torch_utils import eval_stats
 
 
 def evaluation_loop(run_dir,
@@ -28,8 +28,8 @@ def evaluation_loop(run_dir,
 ):
     # Initialize.
     start_time = time.time()
-    tmp_count = 0
     timesteps = list(range(num_timesteps))[::-1]
+    nb_offset = 0
 
     for data in dataloader:
         data = {k: v.to(device)  for k, v in data.items()}
@@ -69,26 +69,25 @@ def evaluation_loop(run_dir,
         gt_pieces_for_metric = [g[-1] for g in gt_pieces]
         pred_pieces_for_metric = [p[-1] for p in pred_pieces]
         metric = compute_metric(gt_pieces_for_metric, pred_pieces_for_metric, is_3d = is_3d)
-        #draw_pieces_fn(run_dir, cur_nobj, 'gt', gt_pieces)
-        draw_pieces_fn(run_dir, cur_nobj, 'pred', pred_pieces)
+        #draw_pieces_fn(run_dir, cur_nobj, 'gt', gt_pieces, nb_offset=nb_offset)
+        draw_pieces_fn(run_dir, cur_nobj, 'pred', pred_pieces, nb_offset=nb_offset)
 
-        tmp_count+=sample_gt.shape[1]
+        nb_offset+=sample_gt.shape[0]
 
         for k, v in metric.items():
-            training_stats.report0(f'Eval/{k}', v)
+            eval_stats.report0(f'Eval/{k}', v)
             
     end_time = time.time()
-    # print metric
-    training_stats.default_collector.update()
-    dict_all = training_stats.default_collector.as_dict()
+    eval_stats.default_collector.update()
+    dict_all = eval_stats.default_collector.as_dict()
     fields = [f"Eval time {dnnlib.util.format_time(end_time - start_time):<12s}"]
     for k, v in dict_all.items():
         if 'Eval/' in k:
-            fields += [f"Eval/{k} {v['mean']:<6.2f}"]
+            fields += [f"{k} {v['mean']:<6.2f}"]
             if dist.get_rank() == 0:
                 logger.log_eval(cur_nobj // 1000, k, v)
+    torch.cuda.reset_peak_memory_stats()
     dist.print0(' '.join(fields))
-    training_stats.default_collector.flush()
 
 def main():
     # project related args

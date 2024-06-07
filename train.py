@@ -182,6 +182,7 @@ def training_loop(
         if (evaluate_ticks is not None) and (done or cur_tick % evaluate_ticks == 0):
             if dist.get_rank() == 0:
                 test_dataset = dnnlib.util.construct_class_by_name(split="test", **dataset_kwargs)
+                #test_sampler = torch.utils.data.distributed.DistributedSampler(test_dataset)
                 test_dataloader = iter(torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_gpu, **dataloader_kwargs))
                 evaluation_loop(
                         run_dir,
@@ -191,6 +192,7 @@ def training_loop(
                         logger,
                         cur_nobj
                 )
+            torch.distributed.barrier() # to make a sinc over nodes
 
         # Save network snapshot.
         if (snapshot_ticks is not None) and (done or cur_tick % snapshot_ticks == 0):

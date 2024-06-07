@@ -12,7 +12,7 @@ config.dry_run = False
 config.batch_size = 512
 config.total_kobj = 200000   
 config.kobj_per_tick = 100         # Interval of progress prints.
-config.snapshot_ticks = 1        # How often to save network snapshots, None = disable.
+config.snapshot_ticks = 100        # How often to save network snapshots, None = disable.
 config.state_dump_ticks = 500       # How often to dump training state, None = disable.
 
 config.dataset = edict()
