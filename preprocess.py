@@ -15,7 +15,7 @@ def rotate_points(points, piece_idx):
     rotated_points = np.matmul(rotation_matrix, points.T).T
 
     # use cos and sin as gt rotation
-    rot = np.array([np.cos(rotation_angle), np.sin(rotation_angle)])
+    rot = np.array([np.cos(- rotation_angle), np.sin(- rotation_angle)])
     gt_rot = rot[None, :].repeat(rotated_points.shape[0], axis=0)
     return rotated_points, gt_rot
 

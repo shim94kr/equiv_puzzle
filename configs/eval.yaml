@@ -1,3 +1,3 @@
-exp_name: "evaluate"
-model_pkl: "/home/wh/equiv_puzzle/training-runs/00003-puzzlefusion-reproduce-gpus4-batch512/network-snapshot-200000.pkl"
-model_state: "/home/wh/equiv_puzzle/training-runs/00003-puzzlefusion-reproduce-gpus4-batch512/training-state-200000.pt"
+exp_name: "equiv_puzzlefusion"
+#model_pkl: "/home/wh/equiv_puzzle/checkpoint/puzzlefusion.pkl"
+#model_state: "/home/wh/equiv_puzzle/checkpoint/puzzlefusion.pt"

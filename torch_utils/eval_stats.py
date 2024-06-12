@@ -128,7 +128,6 @@ class Collector:
             self._cumulative[name].copy_(cumulative)
             if float(delta[0]) != 0:
                 self._moments[name] = delta
-            import pdb; pdb.set_trace()
     
     def reset(self, ex='Eval/.*'):
         r"""

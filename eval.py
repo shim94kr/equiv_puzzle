@@ -14,16 +14,19 @@ from configs.config import config, update_config
 from metric import transform_pieces, get_pieces, get_pieces_3d, compute_metric
 from visualize import draw_pieces, draw_pieces_3d
 from torch_utils import eval_stats
-
+from utils import anchor_centering
 
 def evaluation_loop(run_dir,
                     net,
                     dataloader,
+                    augment_pipe,
                     diffuser,
                     logger,
+                    do_logging = True,
                     cur_nobj = 0,
                     num_timesteps = 1000,
                     clip_denoised = True,
+                    anchor_centering = False,
                     device = torch.device('cuda'),
 ):
     # Initialize.
@@ -33,6 +36,7 @@ def evaluation_loop(run_dir,
 
     for data in dataloader:
         data = {k: v.to(device)  for k, v in data.items()}
+        data = augment_pipe(data) if augment_pipe is not None else data
         x_gt = torch.cat([data["t"], data["rot"]], dim=-1)
         x_t = torch.randn_like(x_gt)
         x_shape = x_gt.shape
@@ -45,6 +49,8 @@ def evaluation_loop(run_dir,
                 samples.append(x_t)
             t_ = torch.tensor([t] * x_shape[0], device=device)
             with torch.no_grad():
+                if anchor_centering:
+                    x_t = anchor_centering(x_t, data, dir=0)
                 x_t = diffuser.p_sample(
                     net,
                     x_t,
@@ -52,6 +58,8 @@ def evaluation_loop(run_dir,
                     clip_denoised=clip_denoised,
                     model_kwargs=model_kwargs,
                 )['sample']
+                if anchor_centering:
+                    x_t = anchor_centering(x_t, data, dir=1)
         
         samples = torch.stack(samples, dim=1)
         sample_gt = x_gt.unsqueeze(1)
@@ -63,7 +71,7 @@ def evaluation_loop(run_dir,
             pred_pieces = get_pieces_3d(pred_pieces[:, -1:], data["faces_mask"], data["faces_piece_idx"], data["faces_padding_mask"], data["piece_idx"], data["padding_mask"])
             draw_pieces_fn = draw_pieces_3d
         else:
-            gt_pieces = get_pieces(gt_pieces[:, -1:], data["piece_idx"], data["padding_mask"])
+            gt_pieces = get_pieces(gt_piece[:, -1:], data["piece_idx"], data["padding_mask"])
             pred_pieces = get_pieces(pred_pieces[:, -1:], data["piece_idx"], data["padding_mask"])
             draw_pieces_fn = draw_pieces
         gt_pieces_for_metric = [g[-1] for g in gt_pieces]
@@ -84,8 +92,8 @@ def evaluation_loop(run_dir,
     for k, v in dict_all.items():
         if 'Eval/' in k:
             fields += [f"{k} {v['mean']:<6.2f}"]
-            if dist.get_rank() == 0:
-                logger.log_eval(cur_nobj // 1000, k, v['mean'])
+            if do_logging and dist.get_rank() == 0:
+                logger.log_eval(cur_nobj // 1000, k.split('/')[1], v['mean'])
     torch.cuda.reset_peak_memory_stats()
     dist.print0(' '.join(fields))
     eval_stats.default_collector.reset()
@@ -95,32 +103,56 @@ def main():
     parse_args()
     dist.init()
     cc = edict()
-    cd, cf, cn = config.dataset, config.diffusion, config.network
+    cd, cf, cn, ca = config.dataset, config.diffusion, config.network, config.augment
     
     batch_size = config.batch_size
     network_pkl, model_state = config.model_pkl, config.model_state
-    if "puzzlefusion" in config.exp_name:
-        dataset_kwargs = edict()
-        if "3d" in config.exp_name:
-            dataset_kwargs.class_name = 'data.CrosscutDataset3D'
-            cd.num_channels, cd.condition_dim = 9, 67
-            dataset_kwargs.update(project = config.project, num_channels=cd.num_channels, condition_dim=cd.condition_dim)
-        else:
-            dataset_kwargs.class_name = 'data.CrosscutDataset'
-            cd.num_channels, cd.condition_dim = 4, 66
-            dataset_kwargs.update(project = config.project, num_channels=cd.num_channels, condition_dim=cd.condition_dim)
-        dataloader_kwargs = edict(pin_memory=True, num_workers=4, prefetch_factor=2)
 
+    is_3d = ("3d" in config.exp_name)
+    is_equiv = ("equiv" in config.exp_name)
+
+    dataset_kwargs = edict()
+    if is_3d:
+        dataset_kwargs.class_name = 'data.CrosscutDataset3D'
+    else:
+        dataset_kwargs.class_name = 'data.CrosscutDataset'
+    dataset_kwargs.update(exp_name = config.exp_name)
+    dataloader_kwargs = edict(pin_memory=True, num_workers=4, prefetch_factor=2)
+    
+    if "puzzlefusion" in config.exp_name:
+        # set default variables here! this could be moved into config file it there's a lot of cases to change.
+        if is_equiv:
+            ca.shape_canonicalization, ca.corner_connection = True, True
+            ca.anchor_selection, ca.anchor_centering = True, True
+        if is_3d:
+            cn.num_channels = 9
+            cn.condition_channels = 3+30+1 if is_equiv else 67
+        else:
+            cn.num_channels = 4
+            cn.condition_channels = 66 #2+30+1 if is_equiv else 66
+
+        augment_kwargs = None
         network_kwargs = edict()
         network_kwargs.class_name = 'network.transformer.TransformerModel'
-        network_kwargs.update(mid_channels=cn.mid_channels)
-        interface_kwargs = dict(in_channels=cd.num_channels, condition_channels=cd.condition_dim, out_channels=cd.num_channels)
-        net = dnnlib.util.construct_class_by_name(**network_kwargs, **interface_kwargs).to(torch.device("cuda"))
+        network_kwargs.update(mid_channels=cn.mid_channels, condition_channels=cn.condition_channels,
+                               in_channels=cn.num_channels, out_channels=cn.num_channels)
+        
+        diffusion_kwargs = edict()
+        diffusion_kwargs.class_name = 'gaussian_diffusion.GaussianDiffusion'
+        diffusion_kwargs.update(num_timesteps=cf.num_timesteps, noise_schedule=cf.noise_schedule, predict_xstart=cf.predict_xstart)
+
+        if is_equiv:
+            augment_kwargs = edict()
+            augment_kwargs.class_name = 'augment.AugmentPipe'
+            augment_kwargs.update(shape_canonicalization=ca.shape_canonicalization, anchor_selection=ca.anchor_selection,
+                                     corner_connection=ca.corner_connection)
+            
+            network_kwargs.update(equiv_encoding=is_equiv)
+
 
     # Rank 0 goes first.
     if dist.get_rank() != 0:
         torch.distributed.barrier()
-
     # Load network.
     if network_pkl is not None:
         dist.print0(f'Loading network from "{network_pkl}"...')
@@ -144,14 +176,12 @@ def main():
     dist.print0('Loading dataset...')
     test_dataset = dnnlib.util.construct_class_by_name(split="test", **dataset_kwargs)
     test_dataloader = iter(torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_gpu, **dataloader_kwargs))
-
-    diffusion_kwargs = edict()
-    diffusion_kwargs.class_name = 'gaussian_diffusion.GaussianDiffusion'
-    diffusion_kwargs.update(num_timesteps=cf.num_timesteps, noise_schedule=cf.noise_schedule, predict_xstart=cf.predict_xstart)
+    augment_pipe = dnnlib.util.construct_class_by_name(**augment_kwargs) if augment_kwargs is not None else None # training.augment.AugmentPipe
     diffuser = dnnlib.util.construct_class_by_name(**diffusion_kwargs)
+    net = dnnlib.util.construct_class_by_name(**network_kwargs).to(torch.device("cuda"))
 
     # Description string.
-    desc = f'{config.exp_name:s}'
+    desc = f'{config.exp_name:s}-eval'
 
     # Pick output directory.
     if dist.get_rank() != 0:
@@ -171,14 +201,19 @@ def main():
     # logger related args
     log_kwargs = edict()
     log_kwargs.class_name = 'log.Logger'
-    log_kwargs.update(project_name = config.project, exp_name = config.exp_name, tags = f'{cur_run_id:05d}-{desc}')
-    logger = dnnlib.util.construct_class_by_name(**log_kwargs)
+    log_kwargs.update(project_name = config.project, exp_name = config.exp_name, run_dir = cc.run_dir, tags = f'{cur_run_id:05d}-{desc}')
+    cc.do_logging = config.do_logging
+    if cc.do_logging:
+        logger = dnnlib.util.construct_class_by_name(**log_kwargs)
+        cc.logger = logger
+    else:
+        cc.logger = None
 
     cc.net = net
     cc.diffuser = diffuser
     cc.dataloader = test_dataloader
+    cc.augment_pipe = augment_pipe
     cc.num_timesteps = cf.num_timesteps
-    cc.logger = logger
 
     evaluation_loop(**cc)
 

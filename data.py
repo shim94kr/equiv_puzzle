@@ -10,13 +10,14 @@ def npz_to_dict(data):
         data_dict[key] = data[key]
     return data_dict
 
-def pad_for_batch(data, n):
+def pad_for_batch(data, n_base):
     for k, v in data.items():
+        n = n_base * 2 if k == "rels" else n_base
         v = v[:n] if n - v.shape[0] < 0 else v
         padding = np.zeros((n-v.shape[0],) + v.shape[1:], dtype=np.int64)
         v = np.concatenate((v, padding), 0)
 
-        if k == "piece_mask" or k == "global_mask" or k == "faces_mask":
+        if k == "piece_mask" or k == "global_mask" or k == "faces_mask" or k == "rels_mask":
             padding = np.zeros(v.shape[:1] + (n-v.shape[1],) + v.shape[2:], dtype=np.int64)
             v = np.concatenate((v, padding), 1)
 
@@ -28,17 +29,12 @@ class CrosscutDataset(Dataset):
     def __init__(self, 
                  exp_name,
                  split, 
-                 num_channels = 4,
-                 condition_dim = 66,
                  max_num_points = 100):
         super().__init__()
         base_dir = f'./datasets/cross_cut/processed_{split}'
         self.exp_name = exp_name
         self.samples = glob(base_dir + '/*')
-        self.num_channels = num_channels
-        self.condition_dim = condition_dim
         self.n = max_num_points
-
 
     def make_encoding(self, data):
         get_one_hot = lambda x, z: np.eye(z)[x]
@@ -48,6 +44,8 @@ class CrosscutDataset(Dataset):
         data.padding_mask = np.ones([len(data["vertices"])])
         data.piece_mask = np.matmul(data.piece_encoding, data.piece_encoding.T)
         data.global_mask = np.matmul(np.ones(len(data.piece_encoding))[:, None], np.ones(len(data.piece_encoding))[None])
+        data.rels_mask = np.zeros_like(data.global_mask)
+        data.rels_mask[data.rels[:, 0], data.rels[:, 1]] = 1.
 
         return data
 
@@ -66,15 +64,11 @@ class CrosscutDataset3D(Dataset):
     def __init__(self, 
                  exp_name,
                  split, 
-                 num_channels = 9,
-                 condition_dim = 67,
                  max_num_points = 150):
         super().__init__()
         base_dir = f'./datasets/randomcut_3d/processed_{split}'
         self.exp_name = exp_name
         self.samples = glob(base_dir + '/*')
-        self.num_channels = num_channels
-        self.condition_dim = condition_dim
         self.n = max_num_points
 
     def make_encoding(self, data):
@@ -86,6 +80,8 @@ class CrosscutDataset3D(Dataset):
         data.faces_padding_mask = np.ones([len(data["faces_mask"])])
         data.piece_mask = np.matmul(data.piece_encoding, data.piece_encoding.T)
         data.global_mask = np.matmul(np.ones(len(data.piece_encoding))[:, None], np.ones(len(data.piece_encoding))[None])
+        data.rels_mask = np.zeros_like(data.global_mask)
+        data.rels_mask[data.rels[:, 0], data.rels[:, 1]] = 1.
 
         return data
     

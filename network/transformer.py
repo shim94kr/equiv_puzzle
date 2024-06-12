@@ -86,11 +86,13 @@ class EncoderLayer(nn.Module):
         self.ff = FeedForward(d_model, d_model*2, dropout, activation)
         self.dropout = nn.Dropout(dropout)
         
-    def forward(self, x, self_mask, gen_mask):
+    def forward(self, x, self_mask, gen_mask, rels_mask=None):
         assert (gen_mask.max()==1 and gen_mask.min()==0), f"{gen_mask.max()}, {gen_mask.min()}"
         x2 = self.norm_1(x)
         x = x + self.dropout(self.self_attn(x2, x2, x2, self_mask)) \
                 + self.dropout(self.gen_attn(x2, x2, x2, gen_mask))
+        if rels_mask is not None:
+            x = x + self.dropout(self.gen_attn(x2, x2, x2, rels_mask))
         x2 = self.norm_2(x)
         x = x + self.dropout(self.ff(x2))
         return x
@@ -106,6 +108,7 @@ class TransformerModel(nn.Module):
         condition_channels,
         mid_channels,
         out_channels,
+        equiv_encoding=False,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -113,6 +116,7 @@ class TransformerModel(nn.Module):
         self.mid_channels = mid_channels
         self.out_channels = out_channels
         self.time_channels = mid_channels
+        self.equiv_encoding = equiv_encoding
         self.num_layers = 6
 
         # self.pos_encoder = PositionalEncoding(mid_channels, 0.001)
@@ -168,17 +172,28 @@ class TransformerModel(nn.Module):
         input_emb = self.input_emb(x)
         if self.condition_channels>0:
             cond = None
-            for key in [f'vertices', f'corner_encoding', f'piece_encoding']:
-                if cond is None:
-                    cond = others[key]
-                else:
-                    cond = th.cat((cond, others[key]), 2)
-            cond_emb = self.condition_emb(cond.float())
+            if self.equiv_encoding:
+                for key in [f'vertices', f'connected_corners', f'anchor_mask']:
+                    if cond is None:
+                        cond = others[key]
+                    else:
+                        cond = th.cat((cond, others[key]), 2)
+                cond_emb = self.condition_emb(cond.float())
+            else:
+                for key in [f'vertices', f'corner_encoding', f'piece_encoding']:
+                    if cond is None:
+                        cond = others[key]
+                    else:
+                        cond = th.cat((cond, others[key]), 2)
+                cond_emb = self.condition_emb(cond.float())
         
         # PositionalEncoding and DM model
         out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1))
         for layer in self.transformer_layers:
-            out = layer(out, others[f'piece_mask'], others[f'global_mask'])
+            if self.equiv_encoding:
+                out = layer(out, others[f'piece_mask'], others[f'global_mask'], others['rels_mask'])
+            else:
+                out = layer(out, others[f'piece_mask'], others[f'global_mask'])
 
         out_dec = self.output_linear1(out)
         out_dec = self.activation(out_dec)

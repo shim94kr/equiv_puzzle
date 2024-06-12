@@ -1,6 +1,8 @@
 # Custom
 training-runs
 datasets
+observations
+checkpoint
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

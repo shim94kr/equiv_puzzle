@@ -15,10 +15,14 @@ config.kobj_per_tick = 100         # Interval of progress prints.
 config.snapshot_ticks = 100        # How often to save network snapshots, None = disable.
 config.evaluate_ticks = 100        # How often to save network snapshots, None = disable.
 config.state_dump_ticks = 500       # How often to dump training state, None = disable.
+config.do_logging = True
 
 config.dataset = edict()
 
+config.augment = edict()
+
 config.network = edict()
+# puzzle fusion arg
 config.network.mid_channels = 256
 
 config.diffusion = edict()
@@ -27,7 +31,6 @@ config.diffusion.noise_schedule = "cosine"
 config.diffusion.predict_xstart = True
 
 config.loss = edict()
-config.loss.use_matching_loss = False
 
 config.optimizer = edict()
 config.optimizer.lr = 1e-3

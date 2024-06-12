@@ -23,8 +23,8 @@ def transform_pieces(polys, batch_samples, piece_masks, is_3d=False):
         for i in reversed(range(3)):
             f, s = (i+1) % 3, (i+2) % 3
             rotation_matrix_i = torch.eye(3).repeat(batch_samples.shape[:-1] + (1, 1,)).to(rot_theta.device)
-            rotation_matrix_i[..., f, f], rotation_matrix_i[..., f, s] = cos_theta[..., i], sin_theta[..., i]
-            rotation_matrix_i[..., s, f], rotation_matrix_i[..., s, s] = -sin_theta[..., i], cos_theta[..., i]
+            rotation_matrix_i[..., f, f], rotation_matrix_i[..., f, s] = cos_theta[..., i], -sin_theta[..., i]
+            rotation_matrix_i[..., s, f], rotation_matrix_i[..., s, s] = sin_theta[..., i], cos_theta[..., i]
             rotation_matrix = torch.matmul(rotation_matrix_i, rotation_matrix)
 
     else:
@@ -35,8 +35,8 @@ def transform_pieces(polys, batch_samples, piece_masks, is_3d=False):
 
         # need to rotate reversly since gt is set by right-order
         rotation_matrix = torch.stack([
-            torch.cat([cos_theta, sin_theta], dim=-1),
-            torch.cat([-sin_theta, cos_theta], dim=-1),
+            torch.cat([cos_theta, -sin_theta], dim=-1),
+            torch.cat([sin_theta, cos_theta], dim=-1),
         ], dim=-2)
 
     # [# of batches, # of samples, # of corners, 3, 3]
@@ -53,7 +53,7 @@ def get_pieces(batch_samples, piece_idx, padding_mask):
             for idx in unique_piece:
                 # recover coordinate of polygon to 0 ~ 20
                 polygon = sample[((piece_idx[b] == idx) * padding_mask[b]).bool()]
-                pieces.append(polygon)
+                pieces.append(polygon.detach().cpu().numpy())
             samples_pieces.append(pieces)
         batch_samples_pieces.append(samples_pieces)
     return batch_samples_pieces
@@ -113,7 +113,7 @@ def compute_metric(gt_pieces, pred_pieces, is_3d=False):
 def weighted_points(pieces, is_3d=False): #그냥 여기서는 같은 weight로 줌 = center
 
     if is_3d == False:
-        measures = [np.full((len(piece), 1), cv2.contourArea(piece.astype(np.float32))) for piece in pieces]
+        measures = [np.full((len(piece), 1), cv2.contourArea(piece)) for piece in pieces]
         points = np.vstack(pieces)
     else:
         measures, points = [], []
@@ -169,6 +169,8 @@ def overlap_score_fn(pieces_gt, sol_transformed, weights, is_3d = False):
             try:
                 overlap = p_gt.intersection(p_sol).volume.astype(np.float32)
             except:
+                # each mesh is proven to be watertight and normal
+                # but the intersection become none and fail to form mesh.
                 overlap = 0.
             curr_measures = np.abs(p_sol.volume.astype(np.float32))
 

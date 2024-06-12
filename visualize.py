@@ -32,8 +32,7 @@ def draw_pieces(run_dir, cur_nobj, name, batch_samples, nb_offset = 0):
                 for idx, polygon in enumerate(sample):
                     # recover coordinate of polygon to 0 ~ 20
                     polygon = (polygon + 1.0) * 10
-                    polygon = polygon.detach().cpu().numpy()
-                    polygon = Polygon(polygon, closed=True, fill=True, edgecolor='k', facecolor=ID_COLOR[idx.item() + 1])
+                    polygon = Polygon(polygon, closed=True, fill=True, edgecolor='k', facecolor=ID_COLOR[idx + 1])
                     ax.add_patch(polygon)
 
                 ax.set_xlim(0, 25)
@@ -86,7 +85,6 @@ def draw_pieces_3d(run_dir, cur_nobj, name, batch_samples_mesh, nb_offset=0):
                 ax.set_xlim(limits[0])
                 ax.set_ylim(limits[1])
                 ax.set_zlim(limits[2])
-
                 buf = io.BytesIO()
                 plt.show()
                 plt.savefig(buf, format='png')
@@ -94,7 +92,7 @@ def draw_pieces_3d(run_dir, cur_nobj, name, batch_samples_mesh, nb_offset=0):
                 buf.seek(0)
                 image = imageio.v2.imread(buf)
                 writer.append_data((np.asarray(image) * 255.).astype(np.uint8))
-
+                
                 '''
                 # Please use below code instead upper one to visualize 360-degree view
                 num_frames=36

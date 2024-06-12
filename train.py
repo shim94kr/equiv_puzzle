@@ -28,7 +28,9 @@ def training_loop(
     loss_kwargs,
     optimizer_kwargs,
     augment_kwargs                   = None,      # Options for augmentation pipeline, None = disable.
+    test_augment_kwargs              = None,      # Options for augmentation pipeline, None = disable.
     log_kwargs                       = None,
+    do_logging                       = True,     # set True to write a log.
     seed                             = 0,         # Global random seed.
     batch_size                       = 2048,      # Total batch size for one training iteration.
     batch_gpu                        = None,      # Limit batch size per GPU, None = no limit.
@@ -72,8 +74,7 @@ def training_loop(
 
     # Construct network.
     dist.print0('Constructing network...')
-    interface_kwargs = dict(in_channels=train_dataset.num_channels, condition_channels=train_dataset.condition_dim, out_channels=train_dataset.num_channels)
-    net = dnnlib.util.construct_class_by_name(**network_kwargs, **interface_kwargs) # subclass of torch.nn.Module
+    net = dnnlib.util.construct_class_by_name(**network_kwargs) # subclass of torch.nn.Module
     net.train().requires_grad_(True).to(device)
 
     # Setup optimizer.
@@ -82,6 +83,7 @@ def training_loop(
     loss_fn = dnnlib.util.construct_class_by_name(diffuser=diffuser, **loss_kwargs) # training.loss.(VP|VE|EDM)Loss
     optimizer = dnnlib.util.construct_class_by_name(params=net.parameters(), **optimizer_kwargs) # subclass of torch.optim.Optimizer
     augment_pipe = dnnlib.util.construct_class_by_name(**augment_kwargs) if augment_kwargs is not None else None # training.augment.AugmentPipe
+    test_augment_pipe = dnnlib.util.construct_class_by_name(**test_augment_kwargs) if test_augment_kwargs is not None else None # training.augment.AugmentPipe
     ddp = torch.nn.parallel.DistributedDataParallel(net, device_ids=[dist.get_rank()], broadcast_buffers=False)
     ema = copy.deepcopy(net).eval().requires_grad_(False)
 
@@ -105,8 +107,10 @@ def training_loop(
         del data # conserve memory
     
     # Set logger for logging loss and evaluation metrics
-    if dist.get_rank() == 0:
+    if do_logging and dist.get_rank() == 0:
         logger = dnnlib.util.construct_class_by_name(**log_kwargs)
+    else:
+        logger = None
 
     # Train.
     dist.print0(f'Training for {total_kobj} kpuzzles...')
@@ -169,7 +173,7 @@ def training_loop(
         dist.print0(' '.join(fields))
 
         # logging statistics per iteration
-        if dist.get_rank() == 0 and (cur_nobj + batch_size) // 1000 != (cur_nobj // 1000):
+        if do_logging and dist.get_rank() == 0 and (cur_nobj + batch_size) // 1000 != (cur_nobj // 1000):
             logger.log_iter(cur_nobj // 1000, loss, g['lr'])
 
         # Check for abort.
@@ -188,9 +192,11 @@ def training_loop(
                         run_dir,
                         net,
                         test_dataloader,
+                        test_augment_pipe,
                         diffuser,
                         logger,
-                        cur_nobj
+                        do_logging,
+                        cur_nobj,
                 )
             torch.distributed.barrier() # to make a sinc over nodes
 
@@ -239,33 +245,46 @@ def main():
     # project related args
     parse_args()
     cc = edict()
-    cd, cn, cf, co, cl = config.dataset, config.network, config.diffusion, config.optimizer, config.loss
+    cd, ca, cn, cf, co, cl = config.dataset, config.augment, config.network, config.diffusion, config.optimizer, config.loss
 
     torch.multiprocessing.set_start_method('spawn')
     dist.init()
 
-    cc.resume_pkl, cc.resume_state_dump = config.model_pkl, config.model_state
+    cc.resume_pkl, cc.resume_state_dump, cc.do_logging = config.model_pkl, config.model_state, config.do_logging
     cc.batch_size, cc.total_kobj = config.batch_size, config.total_kobj
     cc.ema_halflife_kobj, cc.ema_rampup_ratio, cc.kobj_per_tick = co.ema_halflife_kobj, co.ema_rampup_ratio, config.kobj_per_tick
     cc.snapshot_ticks, cc.evaluate_ticks, cc.state_dump_ticks = config.snapshot_ticks, config.evaluate_ticks, config.state_dump_ticks
     cc.lr_decay_kobj, cc.lr_rampup_kobj = co.lr_decay_kobj, co.lr_rampup_kobj
     
     is_3d = ("3d" in config.exp_name)
-    if "puzzlefusion" in config.exp_name:
-        cc.dataset_kwargs = edict()
-        if is_3d:
-            cd.num_channels, cd.condition_dim = 9, 67
-            cc.dataset_kwargs.class_name = 'data.CrosscutDataset3D'
-            cc.dataset_kwargs.update(exp_name = config.exp_name, num_channels=cd.num_channels, condition_dim=cd.condition_dim)
-        else:
-            cd.num_channels, cd.condition_dim = 4, 66
-            cc.dataset_kwargs.class_name = 'data.CrosscutDataset'
-            cc.dataset_kwargs.update(exp_name = config.exp_name, num_channels=cd.num_channels, condition_dim=cd.condition_dim)
-        cc.dataloader_kwargs = edict(pin_memory=True, num_workers=4, prefetch_factor=2)
+    is_equiv = ("equiv" in config.exp_name)
 
+    cc.dataset_kwargs = edict()
+    if is_3d:
+        cc.dataset_kwargs.class_name = 'data.CrosscutDataset3D'
+    else:
+        cc.dataset_kwargs.class_name = 'data.CrosscutDataset'
+    cc.dataset_kwargs.update(exp_name = config.exp_name)
+    cc.dataloader_kwargs = edict(pin_memory=True, num_workers=4, prefetch_factor=2)
+    
+    if "puzzlefusion" in config.exp_name:
+        # set default variables here! this could be moved into config file it there's a lot of cases to change.
+        if is_equiv:
+            ca.shape_canonicalization, ca.corner_connection = True, True
+            ca.anchor_selection, ca.anchor_centering = True, False
+        if is_3d:
+            cn.num_channels = 9
+            cn.condition_channels = 3+30+1 if is_equiv else 67
+        else:
+            cn.num_channels = 4
+            cn.condition_channels = 2+30+1 if is_equiv else 66
+        cl.use_matching_loss = True
+
+        cc.augment_kwargs, cc.test_augment_kwargs = None, None
         cc.network_kwargs = edict()
         cc.network_kwargs.class_name = 'network.transformer.TransformerModel'
-        cc.network_kwargs.update(mid_channels=cn.mid_channels)
+        cc.network_kwargs.update(mid_channels=cn.mid_channels, condition_channels=cn.condition_channels,
+                                 in_channels=cn.num_channels, out_channels=cn.num_channels)
 
         cc.diffusion_kwargs = edict()
         cc.diffusion_kwargs.class_name = 'gaussian_diffusion.GaussianDiffusion'
@@ -273,7 +292,17 @@ def main():
 
         cc.loss_kwargs = edict()
         cc.loss_kwargs.class_name = 'loss.PFLoss'
-        cc.loss_kwargs.update(is_3d = is_3d, use_matching_loss = cl.use_matching_loss)
+        cc.loss_kwargs.update(is_3d = is_3d)
+
+        if is_equiv:
+            cc.augment_kwargs = edict()
+            cc.augment_kwargs.class_name = 'augment.AugmentPipe'
+            cc.augment_kwargs.update(shape_canonicalization=ca.shape_canonicalization, anchor_selection=ca.anchor_selection,
+                                     corner_connection=ca.corner_connection)
+            cc.test_augment_kwargs = cc.augment_kwargs
+            
+            cc.loss_kwargs.update(anchor_centering=ca.anchor_centering)
+            cc.network_kwargs.update(equiv_encoding=is_equiv)
 
     cc.optimizer_kwargs = edict()
     cc.optimizer_kwargs.class_name = 'torch.optim.AdamW'

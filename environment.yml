@@ -2,6 +2,8 @@ name: puzzle_test
 channels:
   - pytorch
   - nvidia
+  - open3d-admin
+  - conda-forge
 dependencies:
   - python>=3.8, <3.10
   - pip

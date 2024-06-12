@@ -19,7 +19,7 @@ def rotate_points(points, piece_idx):
         rotation_matrix[s, f], rotation_matrix[s, s] = np.sin(angle), np.cos(angle)
         rotated_points = np.matmul(rotation_matrix, rotated_points.T).T
 
-    rot = np.stack([np.cos(rotation_angle), np.sin(rotation_angle)], axis=1).flatten()
+    rot = np.stack([np.cos(- rotation_angle), np.sin(- rotation_angle)], axis=1).flatten()
     # use cos and sin as gt rotation
     gt_rot = rot[None, :].repeat(rotated_points.shape[0], axis=0)
     return rotated_points, gt_rot
@@ -39,7 +39,6 @@ def preprocess_crosscut_data(
     base_dir = f'./datasets/randomcut_3d/{split}_data'
     pieces_dir = glob(f'{base_dir}/*')
     num_rels = 100
-    pieces_dir = [dir for dir in pieces_dir if "7pieces" in dir]
 
     for directory in pieces_dir:
         puzzles_dir = glob(f'{directory}/*')
