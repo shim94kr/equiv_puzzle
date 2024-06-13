@@ -25,15 +25,15 @@ def anchor_centering(x_t, data, dir=0):
 def theta_to_rot_params(theta):
     if theta.shape[-1] == 3:
         # Compute yaw, pitch, and roll using advanced indexing
-        roll = theta[..., 0]
+        yaw = theta[..., 0]
         pitch = theta[..., 1]
-        yaw = theta[..., 2]
+        roll = theta[..., 2]
 
         cos_yaw, sin_yaw = torch.cos(yaw), torch.sin(yaw)
         cos_pitch, sin_pitch = torch.cos(pitch), torch.sin(pitch)
         cos_roll, sin_roll = torch.cos(roll), torch.sin(roll)
 
-        rot_params = torch.stack([cos_roll, sin_roll, cos_pitch, sin_pitch, cos_yaw, sin_yaw], dim=-1)
+        rot_params = torch.stack([cos_yaw, sin_yaw, cos_pitch, sin_pitch, cos_roll, sin_roll], dim=-1)
         
     elif theta.shape[-1] == 1:
         # Compute yaw, pitch, and roll using advanced indexing

@@ -91,9 +91,9 @@ class AugmentPipe:
 
             data['vertices'] = canonical_vertices.detach()
             raw_t, raw_rotation_matrix = get_transforms(torch.cat([data["t"], data["rot"]], dim=-1))
-            data["t"] = raw_t + torch.einsum('bpde,bpe->bpd', raw_rotation_matrix, canonical_translation).detach()
+            data["t"] = (raw_t + torch.einsum('bpde,bpe->bpd', raw_rotation_matrix, canonical_translation)).detach()
             rotation_matrix = torch.einsum('bpde,bpef->bpdf', raw_rotation_matrix, canonical_rotation_matrix)
-            data["rot"] = theta_to_rot_params(matrix_to_euler_angles(rotation_matrix, "ZYX")).detach()
+            data["rot"] = theta_to_rot_params(matrix_to_euler_angles(rotation_matrix, "XYZ")).detach()
 
         if self.anchor_selection:
             vertices = data['vertices']
@@ -106,7 +106,7 @@ class AugmentPipe:
             anchor_piece = max_length.max(dim=-1)[1]
             
             data['anchor_piece'] = anchor_piece.detach()
-            data['anchor_mask'] = torch.tensor(piece_idx == anchor_piece[:,None])[:, :, None].to(device).detach()
+            data['anchor_mask'] = torch.tensor(piece_idx == anchor_piece[:,None])[:, :, None].to(device).clone().detach()
         
         if self.corner_connection:
             vertices, rels_mask = data['vertices'], data['rels_mask']

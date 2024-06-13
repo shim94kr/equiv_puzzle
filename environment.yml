@@ -1,4 +1,4 @@
-name: puzzle_test
+name: puzzle
 channels:
   - pytorch
   - nvidia

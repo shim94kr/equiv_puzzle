@@ -129,7 +129,7 @@ def main():
             cn.condition_channels = 3+30+1 if is_equiv else 67
         else:
             cn.num_channels = 4
-            cn.condition_channels = 66 #2+30+1 if is_equiv else 66
+            cn.condition_channels = 2+30+1 if is_equiv else 66
 
         augment_kwargs = None
         network_kwargs = edict()
